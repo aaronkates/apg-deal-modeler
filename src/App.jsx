@@ -81,11 +81,8 @@ function MainApp() {
       <header className="border-b border-gray-800 bg-apg-bg/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-screen-2xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-lg bg-apg-red flex items-center justify-center text-xs font-bold">A</div>
-            <div>
-              <span className="text-sm font-semibold text-white">APG Music</span>
-              <span className="text-gray-500 text-sm"> · Master Rights Deal Modeler</span>
-            </div>
+            <img src="/logo.png" alt="APG" style={{ height: '28px', width: 'auto' }} />
+            <span className="text-gray-500 text-sm">· Master Rights Deal Modeler</span>
           </div>
           <div className="flex items-center gap-3">
             <nav className="flex gap-0.5">
