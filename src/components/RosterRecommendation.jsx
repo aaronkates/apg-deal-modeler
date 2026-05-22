@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { scoreArtists, DEFAULT_WEIGHTS } from '../utils/metrics.js'
 
 const SCORE_BAR_TRACK = '#666666'   // muted track
@@ -171,68 +171,6 @@ function WeightSlider({ label, value, onChange, weight }) {
   )
 }
 
-// Delta-based proportional redistribution.
-// - delta = newValue - oldValue. We take `delta` from the others (or give it back if negative),
-//   in proportion to their *current* values.
-// - If the active slider is trying to increase but every other is at 0, the move is refused.
-// - Any rounding drift is absorbed into the largest "other" weight so the four always sum to 100.
-function redistributeWeights(weights, changedKey, newValue) {
-  const keys      = Object.keys(weights)
-  const oldValue  = weights[changedKey]
-  const delta     = newValue - oldValue
-  if (delta === 0) return weights
-
-  const others    = keys.filter(k => k !== changedKey)
-  const othersSum = others.reduce((s, k) => s + weights[k], 0)
-
-  // No room to absorb a positive delta → refuse, the slider will snap back
-  if (delta > 0 && othersSum === 0) return weights
-
-  const next = { ...weights, [changedKey]: newValue }
-
-  if (othersSum > 0) {
-    others.forEach(k => {
-      const share = Math.round(delta * weights[k] / othersSum)
-      next[k] = weights[k] - share
-    })
-  } else {
-    // All others at 0 and delta < 0 — distribute the give-back evenly
-    const baseShare = Math.floor(-delta / others.length)
-    others.forEach(k => { next[k] = baseShare })
-  }
-
-  // Clamp into [0, 100]
-  for (const k of keys) {
-    if (next[k] < 0)   next[k] = 0
-    if (next[k] > 100) next[k] = 100
-  }
-
-  // Absorb any rounding drift into the largest of the others
-  let drift = 100 - keys.reduce((s, k) => s + next[k], 0)
-  if (drift !== 0) {
-    let largestKey = others[0]
-    for (const k of others) if (next[k] > next[largestKey]) largestKey = k
-
-    const adjusted = next[largestKey] + drift
-    if (adjusted < 0) {
-      drift -= (0 - adjusted)
-      next[largestKey] = 0
-    } else if (adjusted > 100) {
-      drift -= (adjusted - 100)
-      next[largestKey] = 100
-    } else {
-      next[largestKey] = adjusted
-      drift = 0
-    }
-    // If largest hit a clamp boundary, fall back to the active slider so sum is exactly 100
-    if (drift !== 0) {
-      next[changedKey] = Math.max(0, Math.min(100, next[changedKey] + drift))
-    }
-  }
-
-  return next
-}
-
 function RankTable({ artists, onSelect }) {
   return (
     <div className="bg-apg-surface border border-gray-800 rounded-xl overflow-hidden">
@@ -284,32 +222,45 @@ function RankTable({ artists, onSelect }) {
 }
 
 export default function RosterRecommendation({ rosterMetrics, onSelectArtist }) {
-  const [weights, setWeights] = useState(DEFAULT_WEIGHTS)
-  const [expanded, setExpanded] = useState(false)
+  const [weights, setWeights]               = useState(DEFAULT_WEIGHTS)
+  const [appliedWeights, setAppliedWeights] = useState(DEFAULT_WEIGHTS)
+  const [expanded, setExpanded]             = useState(false)
+
+  const total   = weights.growth + weights.stability + weights.listener + weights.ratio
+  const isValid = total === 100
+
+  // Re-ranking only fires when the user's weights sum to exactly 100.
+  // Otherwise the displayed roster stays frozen at the last valid scoring.
+  useEffect(() => {
+    if (isValid) setAppliedWeights(weights)
+  }, [weights, isValid])
 
   const roster = useMemo(
-    () => scoreArtists(rosterMetrics, weights),
-    [rosterMetrics, weights]
+    () => scoreArtists(rosterMetrics, appliedWeights),
+    [rosterMetrics, appliedWeights]
   )
 
   if (!rosterMetrics?.length) {
     return <div className="text-gray-500 text-sm p-8 text-center">Computing roster scores…</div>
   }
 
+  // Plain manual control — no auto-redistribution
   const handleWeightChange = (key, value) => {
-    setWeights(prev => redistributeWeights(prev, key, value))
+    setWeights(prev => ({ ...prev, [key]: value }))
   }
-  const handleReset = () => setWeights(DEFAULT_WEIGHTS)
+  const handleReset = () => {
+    setWeights(DEFAULT_WEIGHTS)
+    setAppliedWeights(DEFAULT_WEIGHTS)
+  }
 
-  const total = weights.growth + weights.stability + weights.listener + weights.ratio
-  const top3  = roster.slice(0, 3)
+  const top3    = roster.slice(0, 3)
   const display = expanded ? roster : roster.slice(0, 20)
 
   return (
     <div className="space-y-6">
       {/* Adjustable weights */}
       <div className="bg-apg-surface border border-gray-800 rounded-xl p-5">
-        <div className="flex justify-between items-baseline mb-4">
+        <div className="flex justify-between items-baseline mb-4 gap-3">
           <div>
             <h3 className="text-sm font-medium text-white">Scoring Weights</h3>
             <p className="text-xs text-gray-500 mt-0.5">Adjust how much each dimension contributes to the composite score</p>
@@ -320,12 +271,21 @@ export default function RosterRecommendation({ rosterMetrics, onSelectArtist }) 
             </button>
             <div className="text-xs">
               <span className="text-gray-500">Total: </span>
-              <span className={`mono font-semibold ${total === 100 ? 'text-white' : 'text-apg-red'}`}>
+              <span className={`mono font-semibold ${isValid ? 'text-white' : 'text-apg-red'}`}>
                 {total}%
               </span>
             </div>
           </div>
         </div>
+
+        {!isValid && (
+          <div className="bg-apg-red/10 border border-apg-red/40 rounded-lg px-3 py-2 mb-3 flex items-center gap-2 text-xs">
+            <span className="text-apg-red">⚠</span>
+            <span className="text-apg-red font-medium">Weights must sum to 100%</span>
+            <span className="text-gray-400">— re-ranking paused (currently {total}%)</span>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {SCORE_DIMS.map(d => (
             <WeightSlider
