@@ -171,35 +171,65 @@ function WeightSlider({ label, value, onChange, weight }) {
   )
 }
 
+// Delta-based proportional redistribution.
+// - delta = newValue - oldValue. We take `delta` from the others (or give it back if negative),
+//   in proportion to their *current* values.
+// - If the active slider is trying to increase but every other is at 0, the move is refused.
+// - Any rounding drift is absorbed into the largest "other" weight so the four always sum to 100.
 function redistributeWeights(weights, changedKey, newValue) {
-  const others = Object.keys(weights).filter(k => k !== changedKey)
-  const oldOthersSum = others.reduce((s, k) => s + weights[k], 0)
-  const newOthersTarget = 100 - newValue
+  const keys      = Object.keys(weights)
+  const oldValue  = weights[changedKey]
+  const delta     = newValue - oldValue
+  if (delta === 0) return weights
+
+  const others    = keys.filter(k => k !== changedKey)
+  const othersSum = others.reduce((s, k) => s + weights[k], 0)
+
+  // No room to absorb a positive delta → refuse, the slider will snap back
+  if (delta > 0 && othersSum === 0) return weights
+
   const next = { ...weights, [changedKey]: newValue }
 
-  if (oldOthersSum > 0) {
-    let runningSum = 0
-    others.forEach((k, idx) => {
-      if (idx === others.length - 1) {
-        next[k] = Math.max(0, newOthersTarget - runningSum)
-      } else {
-        const v = Math.round(weights[k] * newOthersTarget / oldOthersSum)
-        next[k] = Math.max(0, v)
-        runningSum += next[k]
-      }
+  if (othersSum > 0) {
+    others.forEach(k => {
+      const share = Math.round(delta * weights[k] / othersSum)
+      next[k] = weights[k] - share
     })
   } else {
-    const each = Math.floor(newOthersTarget / others.length)
-    let runningSum = 0
-    others.forEach((k, idx) => {
-      if (idx === others.length - 1) {
-        next[k] = newOthersTarget - runningSum
-      } else {
-        next[k] = each
-        runningSum += each
-      }
-    })
+    // All others at 0 and delta < 0 — distribute the give-back evenly
+    const baseShare = Math.floor(-delta / others.length)
+    others.forEach(k => { next[k] = baseShare })
   }
+
+  // Clamp into [0, 100]
+  for (const k of keys) {
+    if (next[k] < 0)   next[k] = 0
+    if (next[k] > 100) next[k] = 100
+  }
+
+  // Absorb any rounding drift into the largest of the others
+  let drift = 100 - keys.reduce((s, k) => s + next[k], 0)
+  if (drift !== 0) {
+    let largestKey = others[0]
+    for (const k of others) if (next[k] > next[largestKey]) largestKey = k
+
+    const adjusted = next[largestKey] + drift
+    if (adjusted < 0) {
+      drift -= (0 - adjusted)
+      next[largestKey] = 0
+    } else if (adjusted > 100) {
+      drift -= (adjusted - 100)
+      next[largestKey] = 100
+    } else {
+      next[largestKey] = adjusted
+      drift = 0
+    }
+    // If largest hit a clamp boundary, fall back to the active slider so sum is exactly 100
+    if (drift !== 0) {
+      next[changedKey] = Math.max(0, Math.min(100, next[changedKey] + drift))
+    }
+  }
+
   return next
 }
 

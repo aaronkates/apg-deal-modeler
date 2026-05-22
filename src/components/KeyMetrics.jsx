@@ -64,7 +64,7 @@ export default function KeyMetrics({ metrics }) {
       <Card
         label="Avg Monthly Growth"
         value={`${avgMonthlyGrowthRate >= 0 ? '+' : ''}${avgMonthlyGrowthRate.toFixed(2)}%`}
-        sub="catalog (last 12mo)"
+        sub="catalog (last 24mo)"
       />
     </div>
   )
