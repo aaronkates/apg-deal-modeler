@@ -29,12 +29,13 @@ function lerpClamped(x, x0, x1, y0, y1) {
   return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
 }
 
-// Scenario multipliers now scale with the artist's tier.
-// Smaller artists have higher upside variance (3.0× best); larger artists have less upside
-// but more downside risk (0.3× worst). Anchors at 100K and 1M daily streams.
+// Scenario multipliers scale with the artist's tier.
+// Smaller artists have higher upside variance (3.0× best) AND deeper downside risk
+// (0.3× worst — no established floor). Larger artists have less upside but a more
+// resilient downside (0.7× worst — catalog provides a floor). Anchors at 100K and 1M daily streams.
 export function calcScenarioMultipliers(dailyStreams = 0) {
   const best  = lerpClamped(dailyStreams, 100_000, 1_000_000, 3.0, 2.0)
-  const worst = lerpClamped(dailyStreams, 100_000, 1_000_000, 0.7, 0.3)
+  const worst = lerpClamped(dailyStreams, 100_000, 1_000_000, 0.3, 0.7)
   return { best, base: 1.0, worst }
 }
 

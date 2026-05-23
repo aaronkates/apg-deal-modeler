@@ -4,8 +4,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, Cell,
 } from 'recharts'
 
-const CATALOG_FILL = '#888888'
-const NEWREL_FILL  = '#aaaaaa'
+const CATALOG_FILL = '#aaaaaa'   // lighter — older/established streams
+const NEWREL_FILL  = '#666666'   // darker — recent/highlighted streams
 const MOM_POS      = '#4caf50'
 const MOM_NEG      = '#e32f2f'
 
